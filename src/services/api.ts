@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { SendOTPRequest, VerifyOTPRequest, User, Vendor } from '@/types/auth';
 
 const BASE_URL = 'http://localhost:8080';
 
@@ -24,59 +25,50 @@ api.interceptors.request.use(
 );
 
 // Auth APIs
-export const sendOTP = (phone: string) => {
-  return api.post('/auth/send-otp', phone );
+export const sendOTP = (data: SendOTPRequest) => {
+  return api.post('/auth/send-otp', data);
 };
 
-export const verifyOTP = (phone: string, otp: string) => {
-  return api.post('/auth/verify-otp', {to:phone, code:otp} );
+export const verifyOTP = async (phone: string, otp: string) => {
+  const response = await api.post('/auth/verify-otp', { to: phone, code: otp });
+  return response.data;
 };
 
-export const registerUser = (userData: {
-  name: string;
-  phone: string;
-  email: string;
-  category: string;
-  skills: string[];
-  currentLocation: {
-    type: string;
-    coordinates: number[];
-    address: {
-      city: string;
-      state: string;
-      pincode: string;
-      fullAddress: string;
-    };
-  };
-}) => {
+export const checkRegistrationStatus = async (phone: string) => {
+  try {
+    const response = await api.get(`/auth/registration-status?phone=${phone}`);
+    return response.data.isRegistered;
+  } catch (error) {
+    return false;
+  }
+};
+
+export const registerUser = (userData: User) => {
   return api.post('/auth/register/user', userData);
 };
 
-export const loginUser = (phone: string) => {
-  return api.post('/auth/login/user', { phone });
+export const loginUser = async (phone: string, code: string) => {
+  const response = await api.post('/auth/login/user', { phone, code });
+  // Store the token
+  if (response.data.token) {
+    localStorage.setItem('token', response.data.token);
+    localStorage.setItem('userType', 'worker');
+  }
+  return response.data;
 };
 
-export const registerVendor = (vendorData: {
-  name: string;
-  phone: string;
-  email: string;
-  businessType: string;
-  location: {
-    type: string;
-    coordinates: number[];
-    address: {
-      city: string;
-      state: string;
-      pincode: string;
-      fullAddress: string;
-    };
-  };
-}) => {
+export const registerVendor = (vendorData: Vendor) => {
   return api.post('/auth/register/vendor', vendorData);
 };
 
-export const loginVendor = (phone: string) => {
-  return api.post('/auth/login/vendor', { phone });
+export const loginVendor = async (phone: string, code: string) => {
+  const response = await api.post('/auth/login/vendor', { phone, code });
+  // Store the token
+  if (response.data.token) {
+    localStorage.setItem('token', response.data.token);
+    localStorage.setItem('userType', 'employer');
+  }
+  return response.data;
 };
 
 // Worker APIs
@@ -85,7 +77,7 @@ export const getWorkerProfile = () => {
 };
 
 export const getAvailableJobs = () => {
-  return api.get('/worker/jobs');
+  return api.get('/worker/jobs/available');
 };
 
 export const applyForJob = (jobId: string) => {
@@ -100,8 +92,8 @@ export const getJobOffers = () => {
   return api.get('/worker/offers');
 };
 
-export const respondToOffer = (offerId: string, status: 'accepted' | 'rejected') => {
-  return api.post(`/worker/offers/${offerId}/respond`, { status });
+export const respondToOffer = (offerId: string, response: 'accepted' | 'rejected') => {
+  return api.post(`/worker/offers/${offerId}/respond`, { response });
 };
 
 // Employer APIs

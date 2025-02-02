@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { sendOTP, verifyOTP, registerUser, registerVendor } from '@/services/api';
+import { sendOTP, verifyOTP, registerUser, registerVendor, checkRegistrationStatus, loginUser, loginVendor } from '@/services/api';
 import type { User, Vendor } from '@/types/auth';
 
 type UserType = 'worker' | 'employer';
@@ -149,6 +149,22 @@ export default function RegisterPage() {
     },
   });
 
+  useEffect(() => {
+    // Check if we have pre-filled data from login
+    const registrationPhone = localStorage.getItem('registrationPhone');
+    const registrationType = localStorage.getItem('registrationType') as UserType | null;
+    
+    if (registrationPhone && registrationType) {
+      setPhone(registrationPhone);
+      setUserType(registrationType);
+      setStep('details');
+      
+      // Clear the stored data
+      localStorage.removeItem('registrationPhone');
+      localStorage.removeItem('registrationType');
+    }
+  }, []);
+
   const handleUserTypeSelect = (type: UserType) => {
     setUserType(type);
     setStep('phone');
@@ -175,11 +191,22 @@ export default function RegisterPage() {
     try {
       setLoading(true);
       setError('');
-      await verifyOTP(
-        phone,
-        data.otp
-      );
-      setStep('details');
+      
+      // First verify the OTP
+      await verifyOTP(phone, data.otp);
+
+      // Check if user is already registered
+      const isRegistered = await checkRegistrationStatus(phone);
+      
+      if (isRegistered) {
+        // If registered, log them in
+        const loginFn = userType === 'worker' ? loginUser : loginVendor;
+        await loginFn(phone, data.otp);
+        router.push('/dashboard');
+      } else {
+        // If not registered, move to registration form
+        setStep('details');
+      }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Invalid OTP');
     } finally {
@@ -215,10 +242,31 @@ export default function RegisterPage() {
       setError('');
       
       const userData: User = {
-        ...data,
+        name: data.name,
         phone,
-        skills: selectedSkills,
+        email: data.email,
+        aadhaarNumber: data.aadhaarNumber,
+        category: data.category,
+        currentLocation: {
+          type: 'Point',
+          coordinates: [0, 0], // You might want to get actual coordinates
+          address: {
+            street: '', // Add street field as it's required
+            city: data.currentLocation.address.city,
+            state: data.currentLocation.address.state,
+            pincode: data.currentLocation.address.pincode,
+            country: 'India', // Default to India
+          }
+        },
+        dateOfBirth: data.dateOfBirth,
+        gender: data.gender,
+        education: data.education,
         languagesSpoken: selectedLanguages,
+        skills: selectedSkills,
+        experience: data.experience,
+        hourlyRate: data.hourlyRate,
+        availability: data.availability,
+        preferredCommunication: data.preferredCommunication
       };
 
       await registerUser(userData);
@@ -236,8 +284,43 @@ export default function RegisterPage() {
       setError('');
       
       const vendorData: Vendor = {
-        ...data,
+        vendorType: data.vendorType,
+        vendorName: data.vendorName,
         phone,
+        email: data.email,
+        aadhaarNumber: data.aadhaarNumber,
+        category: data.category,
+        currentLocation: {
+          type: 'Point',
+          coordinates: [0, 0], // You might want to get actual coordinates
+          address: {
+            street: '', // Add street field as it's required
+            city: data.currentLocation.address.city,
+            state: data.currentLocation.address.state,
+            pincode: data.currentLocation.address.pincode,
+            country: 'India', // Default to India
+          }
+        },
+        ...(data.vendorType === 'organization' ? {
+          organizationDetails: {
+            companyName: data.organizationDetails?.companyName || '',
+            companyRegistrationNumber: data.organizationDetails?.companyRegistrationNumber || '',
+            gstNumber: data.organizationDetails?.gstNumber || '',
+            address: {
+              street: '',
+              city: data.currentLocation.address.city,
+              state: data.currentLocation.address.state,
+              pincode: data.currentLocation.address.pincode,
+              country: 'India',
+            }
+          }
+        } : {
+          individualDetails: {
+            occupation: data.individualDetails?.occupation || '',
+            experienceYears: data.individualDetails?.experienceYears || 0,
+            skills: data.individualDetails?.skills || []
+          }
+        })
       };
 
       await registerVendor(vendorData);
