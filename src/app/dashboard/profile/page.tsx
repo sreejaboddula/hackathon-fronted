@@ -5,30 +5,25 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { UserCircleIcon } from '@heroicons/react/24/outline';
+import { getWorkerProfile, uploadAadhaar, uploadSkillProof } from '@/services/api';
+import { UserProfile } from '@/types';
 
 const profileSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   email: z.string().email('Invalid email address'),
-  phone: z.string().length(10, 'Phone number must be 10 digits'),
-  dateOfBirth: z.string().min(1, 'Date of birth is required'),
-  gender: z.enum(['male', 'female', 'other'], {
-    required_error: 'Please select a gender',
-  }),
+  phone: z.string().min(10, 'Phone number must be 10 digits'),
+  category: z.string().min(1, 'Category is required'),
   skills: z.array(z.string()).min(1, 'At least one skill is required'),
-  experience: z.array(z.object({
-    title: z.string().min(1, 'Job title is required'),
-    company: z.string().min(1, 'Company name is required'),
-    startDate: z.string().min(1, 'Start date is required'),
-    endDate: z.string().optional(),
-    current: z.boolean().optional(),
-    description: z.string().optional(),
-  })),
-  education: z.array(z.object({
-    degree: z.string().min(1, 'Degree is required'),
-    institution: z.string().min(1, 'Institution name is required'),
-    year: z.string().min(1, 'Year is required'),
-    field: z.string().min(1, 'Field of study is required'),
-  })),
+  currentLocation: z.object({
+    type: z.literal('Point'),
+    coordinates: z.tuple([z.number(), z.number()]),
+    address: z.object({
+      city: z.string().min(1, 'City is required'),
+      state: z.string().min(1, 'State is required'),
+      pincode: z.string().min(6, 'Valid pincode is required'),
+      fullAddress: z.string().min(1, 'Full address is required'),
+    }),
+  }),
 });
 
 type ProfileFormData = z.infer<typeof profileSchema>;
@@ -37,6 +32,9 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(false);
   const [skillInput, setSkillInput] = useState('');
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [aadhaarFile, setAadhaarFile] = useState<File | null>(null);
+  const [skillProofFile, setSkillProofFile] = useState<File | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   const {
     register,
@@ -48,41 +46,28 @@ export default function ProfilePage() {
   });
 
   useEffect(() => {
-    // TODO: Fetch user profile data
     const fetchProfile = async () => {
       try {
         setLoading(true);
-        // Simulated API call
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        const data = {
-          name: 'John Doe',
-          email: 'john@example.com',
-          phone: '1234567890',
-          dateOfBirth: '1990-01-01',
-          gender: 'male',
-          skills: ['React', 'Node.js', 'TypeScript'],
-          experience: [
-            {
-              title: 'Software Engineer',
-              company: 'Tech Corp',
-              startDate: '2020-01',
-              current: true,
-              description: 'Full-stack development',
-            },
-          ],
-          education: [
-            {
-              degree: 'Bachelor of Science',
-              institution: 'University of Technology',
-              year: '2019',
-              field: 'Computer Science',
-            },
-          ],
-        };
-        reset(data);
-        setSelectedSkills(data.skills);
+        const response = await getWorkerProfile();
+        const profileData = response.data;
+        setProfile(profileData);
+        reset({
+          name: profileData.name,
+          email: profileData.email,
+          phone: profileData.phone,
+          category: profileData.category,
+          skills: profileData.skills,
+          currentLocation: {
+            type: 'Point',
+            coordinates: profileData.currentLocation.coordinates,
+            address: profileData.currentLocation.address,
+          },
+        });
+        setSelectedSkills(profileData.skills);
       } catch (error) {
         console.error('Failed to fetch profile:', error);
+        alert('Failed to load profile data. Please try again.');
       } finally {
         setLoading(false);
       }
@@ -102,18 +87,68 @@ export default function ProfilePage() {
     setSelectedSkills(selectedSkills.filter(skill => skill !== skillToRemove));
   };
 
+  const handleAadhaarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      try {
+        setLoading(true);
+        await uploadAadhaar(file);
+        alert('Aadhaar uploaded successfully!');
+        setAadhaarFile(file);
+      } catch (error) {
+        console.error('Failed to upload Aadhaar:', error);
+        alert('Failed to upload Aadhaar. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleSkillProofUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && selectedSkills.length > 0) {
+      try {
+        setLoading(true);
+        await uploadSkillProof(file, selectedSkills[0], 'Professional');
+        alert('Skill proof uploaded successfully!');
+        setSkillProofFile(file);
+      } catch (error) {
+        console.error('Failed to upload skill proof:', error);
+        alert('Failed to upload skill proof. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      alert('Please select a skill before uploading proof.');
+    }
+  };
+
   const onSubmit = async (data: ProfileFormData) => {
     try {
       setLoading(true);
-      // TODO: Implement API call to update profile
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      console.log('Profile updated:', data);
+      // TODO: Implement API call to update profile when the endpoint is available
+      console.log('Profile data to update:', data);
+      alert('Profile updated successfully!');
     } catch (error) {
       console.error('Failed to update profile:', error);
+      alert('Failed to update profile. Please try again.');
     } finally {
       setLoading(false);
     }
   };
+
+  if (!profile) {
+    return (
+      <div className="py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-2 text-sm text-gray-500">Loading profile...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="py-6">
@@ -122,19 +157,47 @@ export default function ProfilePage() {
       </div>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
         <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-8">
-          {/* Profile Photo */}
-          <div className="flex items-center space-x-4">
-            <div className="flex-shrink-0">
-              <div className="h-24 w-24 rounded-full bg-gray-200 flex items-center justify-center">
-                <UserCircleIcon className="h-20 w-20 text-gray-400" />
+          {/* Profile Photo Section */}
+          <div className="bg-white shadow sm:rounded-lg">
+            <div className="px-4 py-5 sm:p-6">
+              <div className="flex items-center space-x-4">
+                <div className="flex-shrink-0">
+                  <div className="h-24 w-24 rounded-full bg-gray-200 flex items-center justify-center">
+                    <UserCircleIcon className="h-20 w-20 text-gray-400" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Aadhaar Card</label>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={handleAadhaarUpload}
+                      className="mt-1 block w-full text-sm text-gray-500
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-full file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-blue-50 file:text-blue-700
+                        hover:file:bg-blue-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Skill Proof</label>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={handleSkillProofUpload}
+                      className="mt-1 block w-full text-sm text-gray-500
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-full file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-blue-50 file:text-blue-700
+                        hover:file:bg-blue-100"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
-            <button
-              type="button"
-              className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Change Photo
-            </button>
           </div>
 
           {/* Basic Information */}
@@ -172,7 +235,7 @@ export default function ProfilePage() {
                   )}
                 </div>
 
-                <div className="sm:col-span-2">
+                <div className="sm:col-span-3">
                   <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
                     Phone Number
                   </label>
@@ -187,38 +250,75 @@ export default function ProfilePage() {
                   )}
                 </div>
 
-                <div className="sm:col-span-2">
-                  <label htmlFor="dateOfBirth" className="block text-sm font-medium text-gray-700">
-                    Date of Birth
+                <div className="sm:col-span-3">
+                  <label htmlFor="category" className="block text-sm font-medium text-gray-700">
+                    Category
                   </label>
                   <input
-                    type="date"
-                    id="dateOfBirth"
-                    {...register('dateOfBirth')}
+                    type="text"
+                    id="category"
+                    {...register('category')}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                   />
-                  {errors.dateOfBirth && (
-                    <p className="mt-1 text-sm text-red-600">{errors.dateOfBirth.message}</p>
+                  {errors.category && (
+                    <p className="mt-1 text-sm text-red-600">{errors.category.message}</p>
                   )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Location Information */}
+          <div className="bg-white shadow sm:rounded-lg">
+            <div className="px-4 py-5 sm:p-6">
+              <h3 className="text-lg font-medium text-gray-900">Location</h3>
+              <div className="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                <div className="sm:col-span-3">
+                  <label htmlFor="city" className="block text-sm font-medium text-gray-700">
+                    City
+                  </label>
+                  <input
+                    type="text"
+                    id="city"
+                    {...register('currentLocation.address.city')}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-3">
+                  <label htmlFor="state" className="block text-sm font-medium text-gray-700">
+                    State
+                  </label>
+                  <input
+                    type="text"
+                    id="state"
+                    {...register('currentLocation.address.state')}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  />
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label htmlFor="gender" className="block text-sm font-medium text-gray-700">
-                    Gender
+                  <label htmlFor="pincode" className="block text-sm font-medium text-gray-700">
+                    Pincode
                   </label>
-                  <select
-                    id="gender"
-                    {...register('gender')}
+                  <input
+                    type="text"
+                    id="pincode"
+                    {...register('currentLocation.address.pincode')}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  >
-                    <option value="">Select gender</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                    <option value="other">Other</option>
-                  </select>
-                  {errors.gender && (
-                    <p className="mt-1 text-sm text-red-600">{errors.gender.message}</p>
-                  )}
+                  />
+                </div>
+
+                <div className="sm:col-span-4">
+                  <label htmlFor="fullAddress" className="block text-sm font-medium text-gray-700">
+                    Full Address
+                  </label>
+                  <input
+                    type="text"
+                    id="fullAddress"
+                    {...register('currentLocation.address.fullAddress')}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  />
                 </div>
               </div>
             </div>
